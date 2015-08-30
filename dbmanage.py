@@ -22,9 +22,24 @@ class DbHelper(object):
 
     def __init__(self, args=None, test=False):
         self.args = args or fake_args()
+        self.trans_col_delim = chr(0x1c)  # "field separator"
+        self.trans_row_delim = chr(0x0b)  # "vertical tab"
+        self.escape_chars = ('\\', self.trans_col_delim, self.trans_row_delim)
         if not test:
             self.validate_args()
             self.run()
+
+    @property
+    def fixture_path(self):
+        return self.args.t
+
+    @property
+    def col_delim(self):
+        return self.args.c
+
+    @property
+    def row_delim(self):
+        return self.args.r
 
     def validate_args(self):
         if self.args.t is None or not os.path.exists(self.args.t):
@@ -33,10 +48,25 @@ class DbHelper(object):
     def run(self):
         raise NotImplementedError('Implement in subclass.')
 
+    def encode_record(self, raw_rec):
+        '''prepend \ before self.escape_chars, convert row/column delimiters'''
+        for character in self.escape_chars:
+            # note: this should be faster and safer than using re.
+            raw_rec = raw_rec.replace(character, '\\' + character)
+        return (raw_rec.replace(self.col_delim, self.trans_col_delim)
+                       .replace(self.row_delim, self.trans_row_delim))
+
+    def decode_record(self, raw_rec):
+        '''remove any \ before self.escape_chars, convert delims'''
+        for character in self.escape_chars:
+            raw_rec = raw_rec.replace('\\' + character, character)
+        return (raw_rec.replace(self.trans_col_delim, self.col_delim)
+                       .replace(self.trans_row_delim, self.row_delim))
+
 
 class TestDbHelper(unittest.TestCase):
     def setUp(self):
-        self.obj = DbHelper(test=True)
+        self.obj = DbHelper(args=fake_args(c="\t", r="\n"), test=True)
 
     def test_validate_args_raises_when_missing_fixture_flag(self):
         with self.assertRaises(StandardError):
@@ -57,6 +87,14 @@ class TestDbHelper(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             self.obj = DbHelper(args)
 
+    def test_encode_and_decode_return_same_string(self):
+        wonky = ("\\this\tre" +         # case: starts with backslash
+            self.obj.trans_col_delim +  # case: contains internal delimiters
+            self.obj.trans_row_delim +
+            "cord\tbacksl\\ashes\\\n")  # case: ends with backslash
+        result = self.obj.decode_record(self.obj.encode_record(wonky))
+        self.assertEquals(result, wonky)
+
 
 class DbExportHandler(DbHelper):
     def run(self):
@@ -68,6 +106,9 @@ class TestDbExportHandler(unittest.TestCase):
 
 
 class DbImportHandler(DbHelper):
+    def decode(self, rec):
+        return self.decode_row(self.decode_columns(self.unescape_row(rec)))
+
     def run(self):
         pass
 
