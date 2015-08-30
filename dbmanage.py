@@ -145,6 +145,31 @@ class DbImportHandler(DbHelper):
                 outfile.write(self.decode_record(buff.getvalue()))
 
 
+class TestExportAndImportHandlers(unittest.TestCase):
+    fixture_data = {
+        'alt-col-separator': fake_args(c=',', r='\n'),
+        'alt-row-separator': fake_args(c='\t', r='\r'),
+        'contains-backslashes': fake_args(c='\t', r='\r'),
+        'csv-with-quotes': fake_args(c=',', r='\n'),
+        'standard': fake_args(c='\t', r='\r'),
+        'wonky-example': fake_args(c='\t', r='\r'),
+    }
+
+    def test_export_to_import_results_in_same_as_original_fixture(self):
+        failures = []
+        for (ft, args) in self.fixture_data.items():
+            args.t = os.path.join('fixtures', ft)
+            exporter = DbExportHandler(args)
+            importer = DbImportHandler(args)
+            compare_to = os.path.join(importer.output, 'out_import_' + ft)
+            with open(args.t, 'r') as fixture:
+                with open(compare_to, 'r') as result:
+                    (original, translation) = (fixture.read(), result.read())
+                    if original != translation:
+                        failures.append((ft, original, translation))
+        self.assertEqual([], failures)
+
+
 class InvokeTestsHandler(object):
     def __init__(self, _):
         unittest.main()
