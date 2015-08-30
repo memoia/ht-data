@@ -135,8 +135,8 @@ class DbImportHandler(DbHelper):
             with open(out_path, 'w') as outfile:
                 for character in iter(lambda: infile.read(1), ''):
                     buff.write(character)
-                    # Will this fail in cases where the original input
-                    # has a line that ends with a backslash?
+                    # XXX this fails in cases where the original input
+                    # has a line that ends with a backslash.
                     if last != '\\' and character == self.trans_row_delim:
                         outfile.write(self.decode_record(buff.getvalue()))
                         buff.close()
