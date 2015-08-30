@@ -4,6 +4,7 @@ import os
 import re
 import unittest
 import argparse
+from StringIO import StringIO
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -106,23 +107,24 @@ class TestDbHelper(unittest.TestCase):
 
 class DbExportHandler(DbHelper):
     def run(self):
-        pass
-
-
-class TestDbExportHandler(unittest.TestCase):
-    pass
+        out_path = os.path.join(self.output,
+            'out_export_' + os.path.basename(self.fixture_path))
+        buff = StringIO()
+        with open(self.fixture_path, 'r') as infile:
+            with open(out_path, 'w') as outfile:
+                for character in iter(lambda: infile.read(1), ''):
+                    buff.write(character)
+                    # We assume that the provided record delimiter
+                    # is not contained by any of the fields.
+                    if character == self.obj.row_delim:
+                        outfile.write(self.encode_record(buff.getvalue()))
+                        buff.close()
+                        buff = StringIO()
 
 
 class DbImportHandler(DbHelper):
-    def decode(self, rec):
-        return self.decode_row(self.decode_columns(self.unescape_row(rec)))
-
     def run(self):
         pass
-
-
-class TestDbImportHandler(unittest.TestCase):
-    pass
 
 
 class InvokeTestsHandler(object):
