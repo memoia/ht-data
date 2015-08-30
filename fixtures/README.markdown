@@ -5,3 +5,4 @@ Place test data here.
 * alt-col-separator: comma-separated fields, newline separated lines
 * csv-with-quotes: comma-separated fields with quotes; has comma within a field
 * contains-backslashes: tab-separated, with backslashes in some fields
+* wonky-example: from unit tests - includes internal separator characters

@@ -62,7 +62,11 @@ class DbHelper(object):
         # use lookbehind to ensure we don't split on escaped trans_col_delim
         raw_rec = self.col_delim.join(
                   re.split(r'(?<!\\)' + self.trans_col_delim, raw_rec))
+
+        # satisfy edge case of trailing backslash prior to end of record
+        # by converting end of record first.
         raw_rec = re.sub(self.trans_row_delim + '$', self.row_delim, raw_rec)
+
         for character in self.escape_chars:
             raw_rec = raw_rec.replace('\\' + character, character)
         return raw_rec
