@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 
 import os
+import re
 import unittest
 import argparse
 
@@ -58,10 +59,12 @@ class DbHelper(object):
 
     def decode_record(self, raw_rec):
         '''remove any \ before self.escape_chars, convert delims'''
+        # use lookbehind to ensure we don't split on escaped trans_col_delim
+        raw_rec = self.col_delim.join(
+                  re.split(r'(?<!\\)' + self.trans_col_delim, raw_rec))
         for character in self.escape_chars:
             raw_rec = raw_rec.replace('\\' + character, character)
-        return (raw_rec.replace(self.trans_col_delim, self.col_delim)
-                       .replace(self.trans_row_delim, self.row_delim))
+        return re.sub(self.trans_row_delim + '$', self.row_delim, raw_rec)
 
 
 class TestDbHelper(unittest.TestCase):
