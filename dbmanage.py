@@ -32,6 +32,11 @@ class DbHelper(object):
             self.run()
 
     @property
+    def export_path(self):
+        return os.path.join(self.output,
+                            'out_export_' + os.path.basename(self.fixture_path))
+
+    @property
     def fixture_path(self):
         return self.args.t
 
@@ -45,7 +50,7 @@ class DbHelper(object):
 
     def validate_args(self):
         if self.args.t is None or not os.path.exists(self.args.t):
-            raise StandardError('Missing fixture. Use the -t flag.')
+            raise StandardError('No fixture. Use the -t flag, or -h for help.')
 
     def run(self):
         raise NotImplementedError('Implement in subclass.')
@@ -107,16 +112,14 @@ class TestDbHelper(unittest.TestCase):
 
 class DbExportHandler(DbHelper):
     def run(self):
-        out_path = os.path.join(self.output,
-            'out_export_' + os.path.basename(self.fixture_path))
         buff = StringIO()
         with open(self.fixture_path, 'r') as infile:
-            with open(out_path, 'w') as outfile:
+            with open(self.export_path, 'w') as outfile:
                 for character in iter(lambda: infile.read(1), ''):
                     buff.write(character)
                     # We assume that the provided record delimiter
                     # is not contained by any of the fields.
-                    if character == self.obj.row_delim:
+                    if character == self.row_delim:
                         outfile.write(self.encode_record(buff.getvalue()))
                         buff.close()
                         buff = StringIO()
@@ -124,7 +127,20 @@ class DbExportHandler(DbHelper):
 
 class DbImportHandler(DbHelper):
     def run(self):
-        pass
+        out_path = self.export_path.replace('out_export_', 'out_import_')
+        buff = StringIO()
+        last = None
+        with open(self.export_path, 'r') as infile:
+            with open(out_path, 'w') as outfile:
+                for character in iter(lambda: infile.read(1), ''):
+                    buff.write(character)
+                    # Will this fail in cases where the original input
+                    # has a line that ends with a backslash?
+                    if last != '\\' and character == self.trans_row_delim:
+                        outfile.write(self.decode_record(buff.getvalue()))
+                        buff.close()
+                        buff = StringIO()
+                    last = character
 
 
 class InvokeTestsHandler(object):
