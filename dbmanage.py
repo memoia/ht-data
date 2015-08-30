@@ -123,6 +123,7 @@ class DbExportHandler(DbHelper):
                         outfile.write(self.encode_record(buff.getvalue()))
                         buff.close()
                         buff = StringIO()
+                outfile.write(self.decode_record(buff.getvalue()))
 
 
 class DbImportHandler(DbHelper):
@@ -141,6 +142,7 @@ class DbImportHandler(DbHelper):
                         buff.close()
                         buff = StringIO()
                     last = character
+                outfile.write(self.decode_record(buff.getvalue()))
 
 
 class InvokeTestsHandler(object):
