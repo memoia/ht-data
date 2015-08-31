@@ -62,6 +62,22 @@ Scenarios I considered
   escape records that use our internal delimiters? Do we
   handle these properly alongside backslashes?
 
+Further Discussion
+------------------
+
+While the double-quote field specifier wasn't included in the
+exercise, it's a clear way to indicate the boundaries of a
+field when they include the field delimiter.
+
+There are undoubtedly cases I haven't accounted for.
+
+The encoding and decoding mechanism could use some work---it's
+a bit inconsistent style-wise between going forward and going
+back; if I were to start completely over I'd want to just work
+with bytes and process the entire file in one stream (rather
+than breaking it up into split-records and process-records
+steps).
+
 
 Exercise Summary
 ----------------
