@@ -61,3 +61,47 @@ Scenarios I considered
 * Records containing internal delimiters: Do we properly
   escape records that use our internal delimiters? Do we
   handle these properly alongside backslashes?
+
+
+Exercise Summary
+----------------
+
+Suppose you are tasked with importing a database table
+into an external service provider.
+
+Write two scripts:
+
+1. Export a table into a delimited format (you supply delimiter.)
+   Assume you have access to a program to export from your database,
+   with the following syntax:
+
+   ```bash
+   dbexport ­t table_name \
+            ­c <column­delimiter> \
+            ­r <row­delimiter>  # (defaults to tab, newline)
+   ```
+
+   This program automatically inserts `\` in front of any row and
+   column delimiters appearing in any of the fields. If `\` itself
+   appears in any field, it is converted to `\\`.
+
+2. Once the data is in the provider, certain fields will be updated
+   by the provider and then exported to a file in the same delimited
+   format. Your second script (``dbimport``) should import this file
+   back into your database (has same arguments.)
+
+   This program automatically removes `\` in front of the row and
+   column delimiters, and converts `\\` to `\`.
+
+Desired outcome:
+
+* Zero import errors.
+* Reproduce the original dataset as closely as possible.
+* When reimporting the data from the provider back into your
+  database, all unchanged fields should be identical to their original values.
+
+Deliverables:
+
+* Scripts implementing solution.
+* Dataset for testing and script to run tests.
+* Description of edge cases considered and trade-offs made.
