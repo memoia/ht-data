@@ -91,15 +91,26 @@ class DbHelper(object):
             raw_rec = raw_rec[:-1].replace('\\' + character, character) + raw_rec[-1]
         return raw_rec
 
-    def encode_each_record(self, fd):
+    def each_record(self, fd, codec, reached_end_of_record):
         buff = StringIO()
+        last = None
         for character in iter(lambda: fd.read(1), ''):
             buff.write(character)
-            if character == self.row_delim:
-                yield self.encode_record(buff.getvalue())
+            if reached_end_of_record(character, last):
+                yield codec(buff.getvalue())
                 buff.close()
                 buff = StringIO()
-        yield self.encode_record(buff.getvalue())
+            last = character
+        yield codec(buff.getvalue())
+
+    def encode_each_record(self, fd):
+        return self.each_record(fd, self.encode_record,
+                                lambda char, last: char == self.row_delim)
+
+    def decode_each_record(self, fd):
+        return self.each_record(fd, self.decode_record,
+                                lambda char, last: last != '\\' and
+                                                   char == self.trans_row_delim)
 
 
 class TestDbHelper(unittest.TestCase):
@@ -159,18 +170,10 @@ class DbExportHandler(DbHelper):
 class DbImportHandler(DbHelper):
     def run(self):
         out_path = self.export_path.replace('out_export_', 'out_import_')
-        buff = StringIO()
-        last = None
         with open(self.export_path, 'r') as infile:
             with open(out_path, 'w') as outfile:
-                for character in iter(lambda: infile.read(1), ''):
-                    buff.write(character)
-                    if last != '\\' and character == self.trans_row_delim:
-                        outfile.write(self.decode_record(buff.getvalue()))
-                        buff.close()
-                        buff = StringIO()
-                    last = character
-                outfile.write(self.decode_record(buff.getvalue()))
+                for rec in self.decode_each_record(infile):
+                    outfile.write(rec)
 
 
 class TestExportAndImportHandlers(unittest.TestCase):
