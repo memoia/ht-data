@@ -26,7 +26,9 @@ class DbHelper(object):
         self.args = args or fake_args()
         self.trans_col_delim = chr(0x1c)  # "field separator"
         self.trans_row_delim = chr(0x0b)  # "vertical tab"
-        self.escape_chars = ('\\', self.trans_col_delim, self.trans_row_delim)
+        self.escape_sometimes = (self.col_delim, self.row_delim)
+        self.escape_always = ('\\', self.trans_col_delim, self.trans_row_delim)
+        self.escape_chars = self.escape_always + self.escape_sometimes
         if not test:
             self.validate_args()
             self.run()
@@ -57,14 +59,26 @@ class DbHelper(object):
 
     def encode_record(self, raw_rec):
         '''prepend \ before self.escape_chars, convert row/column delimiters'''
-        for character in self.escape_chars:
-            # note: this should be faster and safer than using re.
-            raw_rec = raw_rec.replace(character, '\\' + character)
-        return (raw_rec.replace(self.col_delim, self.trans_col_delim)
-                       .replace(self.row_delim, self.trans_row_delim))
+        buff = StringIO()
+        escape_delimiters = False
+        for character in raw_rec:
+            if character == '"':
+                escape_delimiters = not escape_delimiters
+            elif character in self.escape_always or (
+                    escape_delimiters and character in self.escape_sometimes):
+                buff.write('\\')
+            else:
+                character = (character
+                    .replace(self.col_delim, self.trans_col_delim)
+                    .replace(self.row_delim, self.trans_row_delim))
+            buff.write(character)
+        return buff.getvalue()
 
     def decode_record(self, raw_rec):
         '''remove any \ before self.escape_chars, convert delims'''
+        if not raw_rec:
+            return raw_rec
+
         # use lookbehind to ensure we don't split on escaped trans_col_delim
         raw_rec = self.col_delim.join(
                   re.split(r'(?<!\\)' + self.trans_col_delim, raw_rec))
@@ -74,13 +88,28 @@ class DbHelper(object):
         raw_rec = re.sub(self.trans_row_delim + '$', self.row_delim, raw_rec)
 
         for character in self.escape_chars:
-            raw_rec = raw_rec.replace('\\' + character, character)
+            raw_rec = raw_rec[:-1].replace('\\' + character, character) + raw_rec[-1]
         return raw_rec
+
+    def encode_each_record(self, fd):
+        buff = StringIO()
+        for character in iter(lambda: fd.read(1), ''):
+            buff.write(character)
+            if character == self.row_delim:
+                yield self.encode_record(buff.getvalue())
+                buff.close()
+                buff = StringIO()
+        yield self.encode_record(buff.getvalue())
 
 
 class TestDbHelper(unittest.TestCase):
+
     def setUp(self):
         self.obj = DbHelper(args=fake_args(c="\t", r="\n"), test=True)
+        self.wonky_string = ("\\this\tre" +  # case: starts with backslash
+            self.obj.trans_col_delim +       # case: contains internal delims
+            self.obj.trans_row_delim +
+            "cord\tbacksl\\ashes\\\n")       # case: ends with backslash
 
     def test_validate_args_raises_when_missing_fixture_flag(self):
         with self.assertRaises(StandardError):
@@ -101,29 +130,30 @@ class TestDbHelper(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             self.obj = DbHelper(args)
 
+    def test_encode_escapes_backslashes_and_delimiters(self):
+        expected = '\\\\this\x1cre\\\x1c\\\x0bcord\x1cbacksl\\\\ashes\\\\\x0b'
+        self.assertEquals(expected, self.obj.encode_record(self.wonky_string))
+
+    def test_encode_escapes_delimiters_within_row(self):
+        self.obj = DbHelper(args=fake_args(c=',', r="\n"), test=True)
+        row = 'a,"b, c",d\n'  # (a, "b, c", d)
+        self.assertEqual('a\x1c"b\\, c"\x1cd\x0b', self.obj.encode_record(row))
+
     def test_encode_and_decode_return_same_string(self):
-        wonky = ("\\this\tre" +         # case: starts with backslash
-            self.obj.trans_col_delim +  # case: contains internal delimiters
-            self.obj.trans_row_delim +
-            "cord\tbacksl\\ashes\\\n")  # case: ends with backslash
-        result = self.obj.decode_record(self.obj.encode_record(wonky))
-        self.assertEquals(result, wonky)
+        result = self.obj.decode_record(self.obj.encode_record(self.wonky_string))
+        self.assertEquals(result, self.wonky_string)
+
+    def test_encode_each_record_separates_rows(self):
+        fake_file = StringIO(self.wonky_string + 'another\trecord\nand\tmore')
+        self.assertEqual(3, len(list(self.obj.encode_each_record(fake_file))))
 
 
 class DbExportHandler(DbHelper):
     def run(self):
-        buff = StringIO()
         with open(self.fixture_path, 'r') as infile:
             with open(self.export_path, 'w') as outfile:
-                for character in iter(lambda: infile.read(1), ''):
-                    buff.write(character)
-                    # We assume that the provided record delimiter
-                    # is not contained by any of the fields.
-                    if character == self.row_delim:
-                        outfile.write(self.encode_record(buff.getvalue()))
-                        buff.close()
-                        buff = StringIO()
-                outfile.write(self.decode_record(buff.getvalue()))
+                for rec in self.encode_each_record(infile):
+                    outfile.write(rec)
 
 
 class DbImportHandler(DbHelper):
@@ -135,8 +165,6 @@ class DbImportHandler(DbHelper):
             with open(out_path, 'w') as outfile:
                 for character in iter(lambda: infile.read(1), ''):
                     buff.write(character)
-                    # XXX this fails in cases where the original input
-                    # has a line that ends with a backslash.
                     if last != '\\' and character == self.trans_row_delim:
                         outfile.write(self.decode_record(buff.getvalue()))
                         buff.close()
@@ -153,6 +181,8 @@ class TestExportAndImportHandlers(unittest.TestCase):
         'csv-with-quotes': fake_args(c=',', r='\n'),
         'standard': fake_args(c='\t', r='\r'),
         'wonky-example': fake_args(c='\t', r='\r'),
+        'empty-file': fake_args(c='\t', r='\r'),
+        'empty-file-with-newline': fake_args(c='\t', r='\r'),
     }
 
     def test_export_to_import_results_in_same_as_original_fixture(self):
